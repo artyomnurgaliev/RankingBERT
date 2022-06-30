@@ -16,6 +16,7 @@ data/images_high_res_0
 data/images_high_res_1
 data/images_high_res_2
 data/images_high_res_small
+data/images_high_res_small.zip
 data/test_with_images.csv
 data/test_with_images_small.csv
 data/train_with_images.csv

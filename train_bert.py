@@ -280,11 +280,14 @@ class TFRBertRankingNetwork(tfrkeras_network.UnivariateRankingNetwork):
             image_count = example_features["image_count"]
 
             features = tf.concat([item_price, image_shape, image_count], axis=1)
-            mult = self._category_emb_dense3(category_emb) * self._features_emb(features)
-
+            category_mult = self._category_emb_dense3(category_emb)
+            features_mult = self._features_emb(features)
             # The `bert_encoder` returns a tuple of (sequence_output, cls_output).
             _, cls_output = self._bert_encoder(inputs, training=training)
-            result = tf.concat([cls_output, mult, category_emb], axis=1)
+            result = tf.concat([cls_output, features, category_emb,
+                                category_mult * features_mult,
+                                cls_output * category_mult,
+                                cls_output * features_mult], axis=1)
             return result
 
         result = get_inputs()

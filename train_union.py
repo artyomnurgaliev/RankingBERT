@@ -26,7 +26,7 @@ from official.nlp.modeling import networks as tfmodel_networks
 from tensorflow_ranking.extension.tfrbert import TFRBertUtil
 from tensorflow_ranking.python.keras import network as tfrkeras_network
 
-from config import bert_path, max_seq_length, IMG_WIDTH, IMG_HEIGHT, batch_size, embedding_size
+from config import bert_path, max_seq_length, batch_size, embedding_size, IMG_WIDTH, IMG_HEIGHT
 
 ##########################################
 # Model setup
@@ -162,20 +162,14 @@ def example_feature_columns():
                 dtype=tf.float32),
         'image_shape':
             tf.feature_column.numeric_column(
-                'image_shape',
+                "image_shape",
                 shape=(1,),
                 default_value=0,
                 dtype=tf.float32),
         'image_count':
             tf.feature_column.numeric_column(
-                'image_count',
+                "image_count",
                 shape=(1,),
-                default_value=0,
-                dtype=tf.float32),
-        'image':
-            tf.feature_column.numeric_column(
-                "image",
-                shape=(IMG_WIDTH * IMG_HEIGHT * 3,),
                 default_value=0,
                 dtype=tf.float32),
         'category_emb':
@@ -184,8 +178,15 @@ def example_feature_columns():
                 shape=(embedding_size,),
                 default_value=0,
                 dtype=tf.float32),
+        'image':
+            tf.feature_column.numeric_column(
+                "image",
+                shape=(IMG_WIDTH * IMG_HEIGHT * 3,),
+                default_value=0,
+                dtype=tf.float32),
     })
     return feature_columns
+
 
 class UnionRankingNetwork(tfrkeras_network.UnivariateRankingNetwork):
     def __init__(self,
@@ -194,26 +195,25 @@ class UnionRankingNetwork(tfrkeras_network.UnivariateRankingNetwork):
                  bert_config_file,
                  bert_max_seq_length,
                  bert_output_dropout,
-                 name=_NETWORK_NAME,
+                 name=model,
                  **kwargs):
-        """Initializes an instance of TFRBertRankingNetwork.
-
-    Args:
-      context_feature_columns: A dict containing all the context feature columns
-        used by the network. Keys are feature names, and values are instances of
-        classes derived from `_FeatureColumn`.
-      example_feature_columns: A dict containing all the example feature columns
-        used by the network. Keys are feature names, and values are instances of
-        classes derived from `_FeatureColumn`.
-      bert_config_file: (string) path to Bert configuration file.
-      bert_max_seq_length: (int) maximum input sequence length (#words) after
-        WordPiece tokenization. Sequences longer than this will be truncated,
-        and shorter than this will be padded.
-      bert_output_dropout: When not `None`, the probability will be used as the
-        dropout probability for BERT output.
-      name: name of Keras network.
-      **kwargs: keyword arguments.
-    """
+        """
+        Args:
+          context_feature_columns: A dict containing all the context feature columns
+            used by the network. Keys are feature names, and values are instances of
+            classes derived from `_FeatureColumn`.
+          example_feature_columns: A dict containing all the example feature columns
+            used by the network. Keys are feature names, and values are instances of
+            classes derived from `_FeatureColumn`.
+          bert_config_file: (string) path to Bert configuration file.
+          bert_max_seq_length: (int) maximum input sequence length (#words) after
+            WordPiece tokenization. Sequences longer than this will be truncated,
+            and shorter than this will be padded.
+          bert_output_dropout: When not `None`, the probability will be used as the
+            dropout probability for BERT output.
+          name: name of Keras network.
+          **kwargs: keyword arguments.
+        """
         super(UnionRankingNetwork, self).__init__(
             context_feature_columns=context_feature_columns,
             example_feature_columns=example_feature_columns,
@@ -241,11 +241,13 @@ class UnionRankingNetwork(tfrkeras_network.UnivariateRankingNetwork):
                 stddev=bert_config.initializer_range))
 
         self._dropout_layer = tf.keras.layers.Dropout(
-            rate=0.1)
+            rate=self._bert_output_dropout)
 
         self._category_emb_dense1 = tf.keras.layers.Dense(50, activation='relu')
         self._category_emb_dense2 = tf.keras.layers.Dense(10, activation='relu')
         self._category_emb_dense3 = tf.keras.layers.Dense(1, activation='relu')
+
+        self._features_emb = tf.keras.layers.Dense(1, activation='relu')
 
         self.conv2a = tf.keras.layers.Conv2D(6, (3, 3))
         self.bn2a = tf.keras.layers.BatchNormalization()
@@ -267,16 +269,16 @@ class UnionRankingNetwork(tfrkeras_network.UnivariateRankingNetwork):
     def score(self, context_features=None, example_features=None, training=True):
         """Univariate scoring of context and one example to generate a score.
 
-    Args:
-      context_features: (dict) Context feature names to 2D tensors of shape
-        [batch_size, ...].
-      example_features: (dict) Example feature names to 2D tensors of shape
-        [batch_size, ...].
-      training: (bool) Whether in training or inference mode.
+        Args:
+          context_features: (dict) Context feature names to 2D tensors of shape
+            [batch_size, ...].
+          example_features: (dict) Example feature names to 2D tensors of shape
+            [batch_size, ...].
+          training: (bool) Whether in training or inference mode.
 
-    Returns:
-      (tf.Tensor) A score tensor of shape [batch_size, 1].
-    """
+        Returns:
+          (tf.Tensor) A score tensor of shape [batch_size, 1].
+        """
 
         def get_inputs():
             inputs = {
@@ -288,6 +290,7 @@ class UnionRankingNetwork(tfrkeras_network.UnivariateRankingNetwork):
             item_price = example_features["item_price"]
             image_shape = example_features["image_shape"]
             image_count = example_features["image_count"]
+
             image = example_features["image"]
             category_emb = example_features["category_emb"]
 
@@ -309,23 +312,28 @@ class UnionRankingNetwork(tfrkeras_network.UnivariateRankingNetwork):
 
             features = tf.concat([item_price, image_shape, image_count], axis=1)
 
-            img_output = self._img_dense2(img)
+            img_mult = self._img_dense2(img)
+            features_mult = self._features_emb(features)
+            category_mult = self._category_emb_dense3(category_emb)
 
-            mult = self._category_emb_dense3(category_emb) * img_output
-
+            # The `bert_encoder` returns a tuple of (sequence_output, cls_output).
             _, cls_output = self._bert_encoder(inputs, training=training)
 
-            img_attn = cls_output * img_output
-
-            result = tf.concat([cls_output, mult, img_emb, img_attn, category_emb, features], axis=1)
+            result = tf.concat([cls_output, features, category_emb, img_emb,
+                                category_mult * img_mult,
+                                category_mult * features_mult,
+                                img_mult * features_mult,
+                                cls_output * img_mult,
+                                cls_output * features_mult,
+                                cls_output * category_mult,
+                                ], axis=1)
             return result
 
         result = get_inputs()
-        print(result.shape)
-        output = self._dropout_layer(result, training=training)
-        output = self._dense1(output)
-        print(output.shape)
-        return self._score_layer(output)
+        result = self._dropout_layer(result, training=training)
+        result = self._dense1(result)
+        result = self._dropout_layer(result, training=training)
+        return self._score_layer(result)
 
     def get_config(self):
         config = super(UnionRankingNetwork, self).get_config()
