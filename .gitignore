@@ -6,6 +6,7 @@ tfrecords_emb
 tfrecords_union
 bert_model
 conv_model
+conv_naive_model
 emb_model
 union_model
 naive_model

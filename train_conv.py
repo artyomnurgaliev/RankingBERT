@@ -37,6 +37,7 @@ num_train_steps = 40000
 num_eval_steps = 100
 loss = "approx_ndcg_loss"
 list_size = 40
+# output_model_dir = f"./conv_naive_model/"
 output_model_dir = f"./{model}_model/"
 ###########################################
 
@@ -234,14 +235,12 @@ class ConvRankingNetwork(tfrkeras_network.UnivariateRankingNetwork):
 
             img = tf.reshape(image, [tf.shape(image)[0], IMG_HEIGHT, IMG_WIDTH, 3])
             x = self.conv2a(img)
-            x = self.bn2a(x, training=training)
+            # x = self.bn2a(x, training=training)
             x = tf.nn.relu(x)
-
             x = self.conv2b(x)
-            x = self.bn2b(x, training=training)
+            # x = self.bn2b(x, training=training)
             img = tf.nn.relu(x)
-
-            img = self.bn(img)
+            # img = self.bn(img)
             img = self._flatten(img)
             img_emb = self._img_dense1(img)
 
@@ -252,6 +251,8 @@ class ConvRankingNetwork(tfrkeras_network.UnivariateRankingNetwork):
 
             mult = self._category_emb_dense3(category_emb) * self._img_dense2(img)
 
+            # Model without features
+            # result = tf.concat([mult, img_emb, category_emb], axis=1)
             result = tf.concat([mult, img_emb, category_emb, features], axis=1)
             return result
 

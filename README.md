@@ -21,6 +21,10 @@ If flag `write_records` is set to `True`, than records will be written to the pa
 4. To train model, one can use `train_<model>.py` file, for example, to train BERT, use [code](train_bert.py).
    (for training BERT and union model you will need checkpoints, look at info in the [config](config.py) file)
 
+One can find metrics visualization and prediction interpretation in [notebook](metrics_visualization_and_prediction_interpretation.ipynb)
+
+[Google disk with trained models](https://drive.google.com/drive/folders/1fY1IBu8xjM_wDMjcWByvGG3aEjZo6DYC?usp=sharing)
+
 Graduate work  
 MIPT  
 Student: Artyom Nurgaliev  
